@@ -1,324 +1,171 @@
-import { useState, useEffect, useRef } from "react";
-
-const STEPS = ["Analyzing symptoms…","Identifying required care…","Searching hospitals nearby…","Ranking by capability match…","Calculating routes…"];
-
-const CHIPS = [
-  { label: "Chest pain", text: "Severe chest pain radiating to left arm, sweating, 55 year old male" },
-  { label: "Pregnancy", text: "7 months pregnant, heavy vaginal bleeding, severe abdominal pain, dizzy" },
-  { label: "Child seizure", text: "3 year old, high fever 104°F, convulsions, unresponsive" },
-  { label: "Stroke", text: "Sudden face drooping, arm weakness, slurred speech — possible stroke" },
-  { label: "Head trauma", text: "Severe head injury from road accident, bleeding, unconscious" },
-  { label: "Burns", text: "Large burn on chest and arms, severe pain, blistering" },
-];
-
-export default function MediRoute() {
-  const [screen, setScreen] = useState("input");
-  const [input, setInput] = useState("");
-  const [loc, setLoc] = useState({ lat: 17.385, lng: 78.4867, label: "Hyderabad (default)" });
-  const [stepIdx, setStepIdx] = useState(0);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState("");
-  const stepTimer = useRef(null);
-
-  useEffect(() => {
-    navigator.geolocation?.getCurrentPosition(
-      p => setLoc({ lat: p.coords.latitude, lng: p.coords.longitude, label: `${p.coords.latitude.toFixed(4)}, ${p.coords.longitude.toFixed(4)}` }),
-      () => {}
-    );
-  }, []);
-
-  useEffect(() => {
-    if (screen === "loading") {
-      setStepIdx(0);
-      stepTimer.current = setInterval(() => setStepIdx(i => (i + 1) % STEPS.length), 1300);
-    } else {
-      clearInterval(stepTimer.current);
-    }
-    return () => clearInterval(stepTimer.current);
-  }, [screen]);
-
-  async function runTriage() {
-    if (!input.trim()) return;
-    setError("");
-    setScreen("loading");
-    try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1200,
-          messages: [{
-            role: "user",
-            content: `You are an emergency medical triage AI for Hyderabad, India. Analyze this emergency and return ONLY valid JSON, no markdown.
-
-Emergency: "${input.trim()}"
-Location: ${loc.lat}, ${loc.lng} (Hyderabad)
-
-Return this exact JSON:
-{
-  "urgencyLevel": "CRITICAL" | "URGENT" | "MODERATE",
-  "triageSummary": "2-3 sentence clinical summary of the situation and immediate care needed",
-  "requiredFacilities": ["2-4 specific facilities needed"],
-  "timeToHospital": "e.g. Within 8 minutes",
-  "immediateActions": ["2-3 things to do RIGHT NOW while waiting"],
-  "hospitals": [
-    {
-      "name": "Real Hyderabad hospital name",
-      "address": "Brief address",
-      "distance": "e.g. 2.4 km",
-      "eta": "e.g. 9 min",
-      "matchScore": 95,
-      "matchedCapabilities": ["capabilities this hospital has that match the case"],
-      "availableCapabilities": ["other notable capabilities"],
-      "icuBeds": 5,
-      "generalBeds": 28,
-      "phone": "040-XXXXXXXX",
-      "rating": 4.3
-    }
-  ]
-}
-Return exactly 4 hospitals ranked best-to-worst. Use real Hyderabad hospital names. Make phone numbers and distances realistic for the given coordinates.`
-          }]
-        })
-      });
-      const data = await res.json();
-      const raw = (data.content || []).map(b => b.text || "").join("");
-      const clean = raw.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(clean);
-      setResult(parsed);
-      setScreen("results");
-    } catch (e) {
-      setScreen("input");
-      setError("Something went wrong. Please try again.");
-    }
-  }
-
-  const urgColor = (u) => u === "CRITICAL" ? "#e63946" : u === "URGENT" ? "#f4a621" : "#4d9fff";
-  const urgBg = (u) => u === "CRITICAL" ? "rgba(230,57,70,0.08)" : u === "URGENT" ? "rgba(244,166,33,0.08)" : "rgba(77,159,255,0.08)";
-  const urgBorder = (u) => u === "CRITICAL" ? "rgba(230,57,70,0.3)" : u === "URGENT" ? "rgba(244,166,33,0.3)" : "rgba(77,159,255,0.3)";
-
-  const s = {
-    wrap: { background:"#07090f", minHeight:"100vh", fontFamily:"'DM Sans',sans-serif", color:"#eef0f6", position:"relative", overflow:"hidden" },
-    grid: { position:"fixed", inset:0, backgroundImage:"linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px)", backgroundSize:"48px 48px", pointerEvents:"none", zIndex:0 },
-    blob: { position:"fixed", top:-200, left:"50%", transform:"translateX(-50%)", width:700, height:500, background:"radial-gradient(ellipse,rgba(230,57,70,0.08) 0%,transparent 70%)", pointerEvents:"none", zIndex:0 },
-    app: { position:"relative", zIndex:1, maxWidth:480, margin:"0 auto", minHeight:"100vh", display:"flex", flexDirection:"column" },
-    header: { padding:"20px 20px 0", display:"flex", alignItems:"center", justifyContent:"space-between" },
-    logo: { display:"flex", alignItems:"center", gap:10 },
-    logoIcon: { width:36, height:36, background:"#e63946", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center" },
-    logoText: { fontSize:17, fontWeight:500 },
-    pill: { display:"flex", alignItems:"center", gap:6, padding:"5px 12px", background:"rgba(45,201,141,0.12)", border:"1px solid rgba(45,201,141,0.2)", borderRadius:100, fontSize:12, color:"#2dc98d", fontFamily:"monospace" },
-    dot: { width:6, height:6, background:"#2dc98d", borderRadius:"50%" },
-    main: { flex:1, padding:"28px 20px 24px" },
-    eyebrow: { fontSize:11, fontFamily:"monospace", color:"#e63946", letterSpacing:"1.5px", textTransform:"uppercase", marginBottom:8 },
-    h1: { fontSize:28, fontWeight:300, lineHeight:1.2, letterSpacing:"-0.5px", marginBottom:10 },
-    subtext: { fontSize:14, color:"#8b91a8", lineHeight:1.7 },
-    locBar: { display:"flex", alignItems:"center", gap:8, padding:"10px 14px", background:"#161d30", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, marginBottom:14, fontSize:12, color:"#8b91a8", fontFamily:"monospace" },
-    card: { background:"#161d30", border:"1px solid rgba(255,255,255,0.13)", borderRadius:20, padding:20, marginBottom:16, position:"relative", overflow:"hidden" },
-    label: { fontSize:11, fontFamily:"monospace", color:"#545b72", letterSpacing:"1px", textTransform:"uppercase", marginBottom:10 },
-    ta: { width:"100%", background:"#131829", border:"1px solid rgba(255,255,255,0.07)", borderRadius:14, padding:"14px 50px 14px 16px", color:"#eef0f6", fontFamily:"'DM Sans',sans-serif", fontSize:15, lineHeight:1.6, resize:"none", minHeight:90, outline:"none", boxSizing:"border-box" },
-    chips: { display:"flex", flexWrap:"wrap", gap:7, marginTop:14 },
-    chip: { padding:"6px 12px", background:"#131829", border:"1px solid rgba(255,255,255,0.07)", borderRadius:100, fontSize:12, color:"#8b91a8", cursor:"pointer" },
-    btn: { width:"100%", padding:16, background:"#e63946", color:"white", border:"none", borderRadius:14, fontFamily:"'DM Sans',sans-serif", fontSize:15, fontWeight:500, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginBottom:16 },
-    errBox: { background:"rgba(230,57,70,0.08)", border:"1px solid rgba(230,57,70,0.25)", borderRadius:12, padding:"12px 16px", fontSize:13, color:"#e63946", marginBottom:14 },
-    loadWrap: { textAlign:"center", padding:"60px 20px" },
-    loadStep: { fontSize:14, color:"#8b91a8", marginBottom:20, minHeight:22 },
-    bars: { display:"flex", justifyContent:"center", gap:5, alignItems:"flex-end", height:28 },
-    hospCard: { background:"#161d30", border:"1px solid rgba(255,255,255,0.07)", borderRadius:18, padding:18, marginBottom:10, position:"relative", overflow:"hidden" },
-    hospName: { fontSize:15, fontWeight:500, marginBottom:6 },
-    hospMeta: { display:"flex", alignItems:"center", gap:12, fontSize:12, color:"#8b91a8", fontFamily:"monospace", marginBottom:10 },
-    barBg: { flex:1, height:4, background:"rgba(255,255,255,0.07)", borderRadius:2, overflow:"hidden" },
-    capRow: { display:"flex", flexWrap:"wrap", gap:5, marginBottom:14 },
-    capMatch: { fontSize:11, padding:"3px 9px", borderRadius:100, fontFamily:"monospace", background:"rgba(45,201,141,0.12)", border:"1px solid rgba(45,201,141,0.25)", color:"#2dc98d" },
-    capAvail: { fontSize:11, padding:"3px 9px", borderRadius:100, fontFamily:"monospace", background:"#1c2438", border:"1px solid rgba(255,255,255,0.07)", color:"#545b72" },
-    actions: { display:"flex", gap:8 },
-    callBtn: { flex:1, padding:12, background:"#e63946", color:"white", border:"none", borderRadius:12, fontFamily:"'DM Sans',sans-serif", fontSize:13, fontWeight:500, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6, textDecoration:"none" },
-    navBtn: { flex:1, padding:12, background:"transparent", color:"#8b91a8", border:"1px solid rgba(255,255,255,0.13)", borderRadius:12, fontFamily:"'DM Sans',sans-serif", fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 },
-    resetBtn: { width:"100%", padding:13, background:"transparent", border:"1px solid rgba(255,255,255,0.07)", borderRadius:14, color:"#8b91a8", fontFamily:"'DM Sans',sans-serif", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginTop:8 },
-    footer: { padding:"16px 20px 28px", textAlign:"center", borderTop:"1px solid rgba(255,255,255,0.07)" },
-    sectionLabel: { fontSize:11, fontFamily:"monospace", color:"#545b72", letterSpacing:"1px", textTransform:"uppercase", marginBottom:12 },
-    bestTag: { position:"absolute", top:12, right:12, fontSize:10, padding:"3px 8px", background:"rgba(45,201,141,0.15)", border:"1px solid rgba(45,201,141,0.3)", borderRadius:100, color:"#2dc98d", fontFamily:"monospace", letterSpacing:"0.5px" },
-  };
-
-  return (
-    <div style={s.wrap}>
-      <div style={s.grid}/>
-      <div style={s.blob}/>
-      <div style={s.app}>
-
-        <header style={s.header}>
-          <div style={s.logo}>
-            <div style={s.logoIcon}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-              </svg>
-            </div>
-            <div style={s.logoText}>Medi<span style={{color:"#e63946"}}>Route</span></div>
-          </div>
-          <div style={s.pill}><div style={s.dot}/> LIVE</div>
-        </header>
-
-        <main style={s.main}>
-
-          {screen === "input" && (
-            <div>
-              <div style={{marginBottom:28}}>
-                <div style={s.eyebrow}>— AI-Powered Emergency Triage</div>
-                <h1 style={s.h1}>Find the <strong style={{fontWeight:500}}>right hospital</strong><br/>in seconds</h1>
-                <p style={s.subtext}>Describe the emergency — our AI identifies what care is needed and finds the nearest equipped hospital.</p>
-              </div>
-
-              <div style={s.locBar}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2dc98d" strokeWidth="2" strokeLinecap="round">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-                </svg>
-                Located · {loc.label}
-              </div>
-
-              <div style={s.card}>
-                <div style={{position:"absolute",top:0,left:0,right:0,height:1,background:"linear-gradient(90deg,transparent,rgba(230,57,70,0.5),transparent)"}}/>
-                <div style={s.label}>Emergency description</div>
-                <div style={{position:"relative"}}>
-                  <textarea
-                    style={s.ta}
-                    rows={3}
-                    placeholder="e.g. Pregnant woman, 7 months, severe abdominal pain and heavy bleeding..."
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                  />
-                </div>
-                <div style={s.chips}>
-                  {CHIPS.map(c => (
-                    <div key={c.label} style={s.chip} onClick={() => setInput(c.text)}>{c.label}</div>
-                  ))}
-                </div>
-              </div>
-
-              {error && <div style={s.errBox}>{error}</div>}
-
-              <button style={s.btn} onClick={runTriage}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><path d="M8 11h6M11 8v6"/>
-                </svg>
-                Find Right Hospital Now
-              </button>
-            </div>
-          )}
-
-          {screen === "loading" && (
-            <div style={s.loadWrap}>
-              <div style={{width:52,height:52,margin:"0 auto 16px"}}>
-                <svg width="52" height="52" viewBox="0 0 52 52" fill="none" style={{animation:"spin 1s linear infinite"}}>
-                  <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes bw{0%,100%{height:8px;opacity:.4}50%{height:26px;opacity:1}}`}</style>
-                  <circle cx="26" cy="26" r="22" stroke="#1c2438" strokeWidth="3"/>
-                  <circle cx="26" cy="26" r="22" stroke="#e63946" strokeWidth="3" strokeDasharray="138" strokeDashoffset="100" strokeLinecap="round"/>
-                </svg>
-              </div>
-              <div style={s.loadStep}>{STEPS[stepIdx]}</div>
-              <div style={s.bars}>
-                {[0,0.15,0.3,0.45,0.6].map((d,i) => (
-                  <div key={i} style={{width:4,background:"#e63946",borderRadius:2,opacity:.7,animation:`bw 1.1s ease-in-out ${d}s infinite`}}/>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {screen === "results" && result && (
-            <div>
-              <div style={{background:urgBg(result.urgencyLevel),border:`1px solid ${urgBorder(result.urgencyLevel)}`,borderRadius:16,padding:"16px 18px",marginBottom:20}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                  <div style={{display:"flex",alignItems:"center",gap:7,fontSize:12,fontFamily:"monospace",fontWeight:500,letterSpacing:"0.5px",textTransform:"uppercase",color:urgColor(result.urgencyLevel)}}>
-                    <div style={{width:8,height:8,borderRadius:"50%",background:urgColor(result.urgencyLevel)}}/>
-                    {result.urgencyLevel}
-                  </div>
-                  <div style={{fontSize:12,color:"#8b91a8",fontFamily:"monospace",display:"flex",alignItems:"center",gap:5}}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                    {result.timeToHospital}
-                  </div>
-                </div>
-                <div style={{fontSize:13,color:"#8b91a8",lineHeight:1.7,marginBottom:12}}>{result.triageSummary}</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom: result.immediateActions?.length ? 0 : 0}}>
-                  {(result.requiredFacilities||[]).map(f => (
-                    <span key={f} style={{fontSize:11,padding:"4px 10px",borderRadius:100,background:"#1c2438",border:"1px solid rgba(255,255,255,0.13)",color:"#8b91a8",fontFamily:"monospace"}}>{f}</span>
-                  ))}
-                </div>
-                {result.immediateActions?.length > 0 && (
-                  <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
-                    <div style={{fontSize:11,fontFamily:"monospace",color:"#545b72",letterSpacing:"1px",textTransform:"uppercase",marginBottom:8}}>Do this now</div>
-                    {result.immediateActions.map((a,i) => (
-                      <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,fontSize:13,color:"#8b91a8",lineHeight:1.6,marginBottom:5}}>
-                        <div style={{flexShrink:0,width:18,height:18,background:"rgba(230,57,70,0.15)",border:"1px solid rgba(230,57,70,0.3)",borderRadius:"50%",fontSize:11,color:"#e63946",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"monospace",marginTop:1}}>{i+1}</div>
-                        <span>{a}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={s.sectionLabel}>{result.hospitals.length} matched hospitals</div>
-
-              {result.hospitals.map((h, i) => (
-                <div key={i} style={{...s.hospCard, border: i===0 ? "1px solid rgba(45,201,141,0.25)" : s.hospCard.border}}>
-                  {i===0 && <div style={s.bestTag}>Best Match</div>}
-                  <div style={s.hospName}>{h.name}</div>
-                  <div style={{fontSize:12,color:"#8b91a8",fontFamily:"monospace",marginBottom:8}}>{h.address}</div>
-                  <div style={s.hospMeta}>
-                    <span style={{display:"flex",alignItems:"center",gap:4}}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                      {h.distance}
-                    </span>
-                    <span style={{display:"flex",alignItems:"center",gap:4}}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                      ~{h.eta}
-                    </span>
-                    {h.rating && <span>★ {h.rating}</span>}
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-                    <div style={s.barBg}><div style={{height:"100%",width:`${h.matchScore}%`,background:"#e63946",borderRadius:2,transition:"width 0.6s ease"}}/></div>
-                    <div style={{fontSize:12,fontFamily:"monospace",color:"#8b91a8",flexShrink:0}}>{h.matchScore}%</div>
-                  </div>
-                  <div style={s.capRow}>
-                    {(h.matchedCapabilities||[]).map(c => <span key={c} style={s.capMatch}>✓ {c}</span>)}
-                    {(h.availableCapabilities||[]).map(c => <span key={c} style={s.capAvail}>{c}</span>)}
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontFamily:"monospace",marginBottom:14}}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b91a8" strokeWidth="2" strokeLinecap="round"><path d="M2 4v16"/><path d="M2 8h18a2 2 0 012 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/></svg>
-                    <span style={{color: h.icuBeds > 0 ? "#2dc98d" : "#e63946"}}>ICU: {h.icuBeds > 0 ? `${h.icuBeds} beds` : "check"}</span>
-                    <span style={{color:"#545b72"}}>·</span>
-                    <span style={{color: h.generalBeds > 0 ? "#2dc98d" : "#e63946"}}>General: {h.generalBeds > 0 ? `${h.generalBeds} beds` : "check"}</span>
-                  </div>
-                  <div style={s.actions}>
-                    <a style={s.callBtn} href={`tel:${h.phone}`}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.07 12a19.79 19.79 0 01-3-8.63A2 2 0 013 1.18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L7.09 9a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16z"/></svg>
-                      Call Now
-                    </a>
-                    <button style={s.navBtn} onClick={() => window.open(`https://www.google.com/maps/search/${encodeURIComponent(h.name + ' hospital Hyderabad')}`, '_blank')}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-                      Navigate
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              <button style={s.resetBtn} onClick={() => { setInput(""); setResult(null); setError(""); setScreen("input"); }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                Search another emergency
-              </button>
-            </div>
-          )}
-
-        </main>
-
-        <footer style={s.footer}>
-          <div style={{fontSize:13,color:"#545b72",marginBottom:4}}>
-            Life-threatening? Call <a href="tel:108" style={{color:"#e63946",textDecoration:"none",fontWeight:500,fontFamily:"monospace"}}>108</a> &nbsp;·&nbsp; <a href="tel:112" style={{color:"#e63946",textDecoration:"none",fontWeight:500,fontFamily:"monospace"}}>112</a>
-          </div>
-          <div style={{fontSize:11,color:"#545b72",fontFamily:"monospace"}}>MediRoute does not replace emergency services</div>
-        </footer>
-
-      </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1"/>
+<title>MediRoute — Emergency Hospital Finder</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#07090f;--bg3:#131829;--surface:#161d30;--surface2:#1c2438;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);--red:#e63946;--red-dim:rgba(230,57,70,0.15);--red-glow:rgba(230,57,70,0.35);--green:#2dc98d;--green-dim:rgba(45,201,141,0.12);--amber:#f4a621;--blue:#4d9fff;--text:#eef0f6;--text2:#8b91a8;--text3:#545b72;--font:'DM Sans',sans-serif;--mono:'DM Mono',monospace}
+html{font-size:16px}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100svh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0}
+.blob{position:fixed;top:-200px;left:50%;transform:translateX(-50%);width:700px;height:500px;background:radial-gradient(ellipse,rgba(230,57,70,0.08) 0%,transparent 70%);pointer-events:none;z-index:0}
+.app{position:relative;z-index:1;max-width:480px;margin:0 auto;min-height:100svh;display:flex;flex-direction:column}
+header{padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:36px;height:36px;background:var(--red);border-radius:10px;display:flex;align-items:center;justify-content:center;animation:pi 2.5s ease-in-out infinite}
+@keyframes pi{0%,100%{box-shadow:0 0 0 0 var(--red-glow)}50%{box-shadow:0 0 0 8px transparent}}
+.logo-text{font-size:17px;font-weight:500}.logo-text span{color:var(--red)}
+.pill{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--green-dim);border:1px solid rgba(45,201,141,0.2);border-radius:100px;font-size:12px;color:var(--green);font-family:var(--mono)}
+.dot{width:6px;height:6px;background:var(--green);border-radius:50%;animation:blink 1.8s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+main{flex:1;padding:28px 20px 24px}
+.eyebrow{font-size:11px;font-family:var(--mono);color:var(--red);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.eyebrow::before{content:'';display:block;width:20px;height:1px;background:var(--red)}
+h1{font-size:28px;font-weight:300;line-height:1.2;letter-spacing:-.5px;margin-bottom:10px}
+h1 strong{font-weight:500}
+.sub{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:28px}
+.loc-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;font-size:12px;color:var(--text2);font-family:var(--mono)}
+.card{background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:20px;margin-bottom:16px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(230,57,70,0.5),transparent)}
+.input-lbl{font-size:11px;font-family:var(--mono);color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}
+textarea{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:14px;padding:14px 16px;color:var(--text);font-family:var(--font);font-size:15px;line-height:1.6;resize:none;min-height:90px;outline:none}
+textarea::placeholder{color:var(--text3)}textarea:focus{border-color:rgba(230,57,70,.4)}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+.chip{padding:6px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:100px;font-size:12px;color:var(--text2);cursor:pointer;transition:all .15s;font-family:var(--font)}
+.chip:hover,.chip.active{border-color:var(--red);color:var(--red);background:var(--red-dim)}
+.find-btn{width:100%;padding:16px;background:var(--red);color:#fff;border:none;border-radius:14px;font-family:var(--font);font-size:15px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:16px;transition:all .2s}
+.find-btn:hover{background:#f04550;transform:translateY(-1px);box-shadow:0 8px 24px var(--red-glow)}
+footer{padding:16px 20px 28px;text-align:center;border-top:1px solid var(--border)}
+footer p{font-size:13px;color:var(--text3);margin-bottom:4px}footer a{color:var(--red);text-decoration:none;font-weight:500;font-family:var(--mono)}
+footer small{font-size:11px;color:var(--text3);font-family:var(--mono)}
+#loading{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px}
+#loading.show{display:flex}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{animation:spin 1s linear infinite}
+.load-step{font-size:14px;color:var(--text2);font-family:var(--mono);min-height:22px}
+.bars{display:flex;gap:5px;align-items:flex-end;height:28px}
+.bar{width:4px;background:var(--red);border-radius:2px;opacity:.7}
+@keyframes bw{0%,100%{height:8px;opacity:.4}50%{height:26px;opacity:1}}
+.bar:nth-child(1){animation:bw 1.1s .0s ease-in-out infinite}.bar:nth-child(2){animation:bw 1.1s .15s ease-in-out infinite}.bar:nth-child(3){animation:bw 1.1s .3s ease-in-out infinite}.bar:nth-child(4){animation:bw 1.1s .45s ease-in-out infinite}.bar:nth-child(5){animation:bw 1.1s .6s ease-in-out infinite}
+#results{display:none}#results.show{display:block}
+.triage-banner{border-radius:16px;padding:16px 18px;margin-bottom:20px}
+.triage-banner.critical{background:rgba(230,57,70,.08);border:1px solid rgba(230,57,70,.3)}
+.triage-banner.urgent{background:rgba(244,166,33,.08);border:1px solid rgba(244,166,33,.3)}
+.triage-banner.moderate{background:rgba(77,159,255,.08);border:1px solid rgba(77,159,255,.3)}
+.triage-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.urgency-badge{display:flex;align-items:center;gap:7px;font-size:12px;font-family:var(--mono);font-weight:500;letter-spacing:.5px;text-transform:uppercase}
+.critical .urgency-badge{color:var(--red)}.urgent .urgency-badge{color:var(--amber)}.moderate .urgency-badge{color:var(--blue)}
+.udot{width:8px;height:8px;border-radius:50%}
+.critical .udot{background:var(--red);animation:blink .8s ease-in-out infinite}.urgent .udot{background:var(--amber)}.moderate .udot{background:var(--blue)}
+.time-tag{font-size:12px;color:var(--text2);font-family:var(--mono);display:flex;align-items:center;gap:5px}
+.triage-summary{font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:12px}
+.ftags{display:flex;flex-wrap:wrap;gap:6px}
+.ftag{font-size:11px;padding:4px 10px;border-radius:100px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);font-family:var(--mono)}
+.actions-now{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.actions-lbl{font-size:11px;font-family:var(--mono);color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+.action-item{display:flex;align-items:flex-start;gap:10px;font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:6px}
+.anum{flex-shrink:0;width:18px;height:18px;background:var(--red-dim);border:1px solid rgba(230,57,70,.3);border-radius:50%;font-size:11px;color:var(--red);display:flex;align-items:center;justify-content:center;font-family:var(--mono);margin-top:1px}
+.sec-label{font-size:11px;font-family:var(--mono);color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.sec-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.hcard{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;margin-bottom:10px;position:relative;overflow:hidden;animation:slideup .35s ease both}
+@keyframes slideup{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.hcard:nth-child(1){animation-delay:.0s}.hcard:nth-child(2){animation-delay:.08s}.hcard:nth-child(3){animation-delay:.16s}.hcard:nth-child(4){animation-delay:.24s}
+.hcard.best{border-color:rgba(45,201,141,.25)}
+.best-tag{position:absolute;top:12px;right:12px;font-size:10px;padding:3px 8px;background:rgba(45,201,141,.15);border:1px solid rgba(45,201,141,.3);border-radius:100px;color:var(--green);font-family:var(--mono);letter-spacing:.5px}
+.hname{font-size:15px;font-weight:500;margin-bottom:4px}.haddr{font-size:12px;color:var(--text3);font-family:var(--mono);margin-bottom:10px}
+.hmeta{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--text2);font-family:var(--mono);margin-bottom:10px}
+.hmeta span{display:flex;align-items:center;gap:4px}
+.bar-wrap{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.bar-bg{flex:1;height:4px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;background:var(--red);border-radius:2px;width:0;transition:width .8s ease}
+.mscore{font-size:12px;font-family:var(--mono);color:var(--text2);flex-shrink:0}
+.caps{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px}
+.cap-m{font-size:11px;padding:3px 9px;border-radius:100px;font-family:var(--mono);background:var(--green-dim);border:1px solid rgba(45,201,141,.25);color:var(--green)}
+.cap-a{font-size:11px;padding:3px 9px;border-radius:100px;font-family:var(--mono);background:var(--surface2);border:1px solid var(--border);color:var(--text3)}
+.beds{display:flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono);margin-bottom:14px}
+.bok{color:var(--green)}.bno{color:var(--red)}.bsep{color:var(--text3)}
+.hactions{display:flex;gap:8px}
+.btn-call{flex:1;padding:12px;background:var(--red);color:#fff;border:none;border-radius:12px;font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;transition:all .2s}
+.btn-call:hover{background:#f04550}
+.btn-nav{flex:1;padding:12px;background:transparent;color:var(--text2);border:1px solid var(--border2);border-radius:12px;font-family:var(--font);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .2s}
+.btn-nav:hover{background:var(--surface2);color:var(--text)}
+.reset-btn{width:100%;padding:13px;background:transparent;border:1px solid var(--border);border-radius:14px;color:var(--text2);font-family:var(--font);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px;transition:all .2s}
+.reset-btn:hover{background:var(--surface);color:var(--text)}
+.demo-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-family:var(--mono);color:var(--amber);background:rgba(244,166,33,.1);border:1px solid rgba(244,166,33,.25);border-radius:100px;padding:3px 9px;margin-bottom:14px}
+</style>
+</head>
+<body>
+<div class="blob"></div>
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="logo-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+      <div class="logo-text">Medi<span>Route</span></div>
     </div>
-  );
-}
+    <div class="pill"><div class="dot"></div>DEMO</div>
+  </header>
+  <main>
+    <div id="input-screen">
+      <div class="eyebrow">AI-Powered Emergency Triage</div>
+      <h1>Find the <strong>right hospital</strong><br/>in seconds</h1>
+      <p class="sub">Describe the emergency — select a scenario or type your own.</p>
+      <div class="loc-bar">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2dc98d" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        Located · Hyderabad, Telangana
+      </div>
+      <div class="card">
+        <div class="input-lbl">Emergency Description</div>
+        <textarea id="symp" rows="3" placeholder="e.g. Severe chest pain radiating to left arm..."></textarea>
+        <div class="chips">
+          <div class="chip" onclick="fill(this,'chest')">Chest pain</div>
+          <div class="chip" onclick="fill(this,'pregnancy')">Pregnancy</div>
+          <div class="chip" onclick="fill(this,'seizure')">Child seizure</div>
+          <div class="chip" onclick="fill(this,'stroke')">Stroke</div>
+          <div class="chip" onclick="fill(this,'trauma')">Head trauma</div>
+          <div class="chip" onclick="fill(this,'burns')">Burns</div>
+        </div>
+      </div>
+      <button class="find-btn" onclick="runTriage()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><path d="M8 11h6M11 8v6"/></svg>
+        Find Right Hospital Now
+      </button>
+    </div>
+    <div id="loading">
+      <svg class="spinner" width="52" height="52" viewBox="0 0 52 52" fill="none">
+        <circle cx="26" cy="26" r="22" stroke="#1c2438" stroke-width="3"/>
+        <circle cx="26" cy="26" r="22" stroke="#e63946" stroke-width="3" stroke-dasharray="138" stroke-dashoffset="100" stroke-linecap="round"/>
+      </svg>
+      <div class="load-step" id="load-step">Analyzing emergency…</div>
+      <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+    </div>
+    <div id="results"></div>
+  </main>
+  <footer>
+    <p>Life-threatening? Call <a href="tel:108">108</a> &nbsp;·&nbsp; <a href="tel:112">112</a></p>
+    <small>MediRoute — Demo Mode · No API required</small>
+  </footer>
+</div>
+<script>
+const STEPS=["Analyzing symptoms…","Identifying required care…","Searching hospitals nearby…","Ranking by capability match…","Calculating routes…"];
+const TEXTS={chest:"Severe chest pain radiating to left arm, sweating, 55 year old male",pregnancy:"7 months pregnant, heavy vaginal bleeding, severe abdominal pain, dizzy",seizure:"3 year old, high fever 104°F, convulsions, unresponsive",stroke:"Sudden face drooping, arm weakness, slurred speech — possible stroke",trauma:"Severe head injury from road accident, bleeding, unconscious",burns:"Large burn on chest and arms, severe pain, blistering"};
+const DATA={
+chest:{urgencyLevel:"CRITICAL",triageSummary:"Patient presents with classic signs of acute myocardial infarction — chest pain radiating to left arm with diaphoresis in a 55-year-old male. Immediate cardiac intervention is required. Risk of cardiac arrest is high without prompt catheterization.",requiredFacilities:["Cardiac ICU","Cath Lab","Emergency Cardiology","Defibrillator Unit"],timeToHospital:"Within 8 minutes",immediateActions:["Call 108 immediately — do not drive yourself","Have patient chew 325mg aspirin if not allergic","Keep patient still, loosen tight clothing, monitor breathing"],hospitals:[{name:"Yashoda Hospitals, Secunderabad",address:"Alexander Road, Secunderabad",distance:"2.8 km",eta:"7 min",matchScore:97,matchedCapabilities:["24/7 Cath Lab","Cardiac ICU","Emergency Cardiology"],availableCapabilities:["Neurology","Trauma Center"],icuBeds:5,generalBeds:24,phone:"040-45674567",rating:4.6},{name:"KIMS Hospitals, Secunderabad",address:"1-8-31/1, Minister Road, Secunderabad",distance:"3.5 km",eta:"9 min",matchScore:93,matchedCapabilities:["Cardiac Surgery","CCU","Primary PCI"],availableCapabilities:["Multi-Organ Transplant","Neurosurgery"],icuBeds:3,generalBeds:18,phone:"040-44885000",rating:4.4},{name:"Apollo Hospitals, Jubilee Hills",address:"Jubilee Hills, Hyderabad",distance:"6.1 km",eta:"14 min",matchScore:88,matchedCapabilities:["Cardiac ICU","Interventional Cardiology"],availableCapabilities:["Oncology","Orthopedics","Robotic Surgery"],icuBeds:7,generalBeds:35,phone:"040-23607777",rating:4.5},{name:"Care Hospitals, Banjara Hills",address:"Road No. 1, Banjara Hills",distance:"7.4 km",eta:"17 min",matchScore:81,matchedCapabilities:["Cardiology OPD","Cardiac Monitoring"],availableCapabilities:["Nephrology","Gastroenterology"],icuBeds:2,generalBeds:20,phone:"040-30418000",rating:4.2}]},
+pregnancy:{urgencyLevel:"CRITICAL",triageSummary:"Heavy vaginal bleeding at 7 months gestation with abdominal pain and dizziness suggests placenta previa or placental abruption — both obstetric emergencies. Immediate surgical intervention and neonatal intensive care may be required.",requiredFacilities:["Emergency OT","NICU","Blood Bank","High-Risk Obstetrics"],timeToHospital:"Within 10 minutes",immediateActions:["Call 108 immediately","Lay patient on left side to reduce aortic compression","Do NOT let patient eat or drink — surgery may be needed"],hospitals:[{name:"Rainbow Children's Hospital, Banjara Hills",address:"Road No. 10, Banjara Hills",distance:"4.2 km",eta:"10 min",matchScore:98,matchedCapabilities:["Level III NICU","High-Risk Obstetrics","Emergency OT"],availableCapabilities:["Pediatric Surgery","Neonatology"],icuBeds:6,generalBeds:30,phone:"040-44447777",rating:4.7},{name:"Fernandez Hospital, Bogulkunta",address:"4-1-1230, Bogulkunta, Hyderabad",distance:"5.1 km",eta:"12 min",matchScore:95,matchedCapabilities:["Maternal ICU","NICU","Blood Bank"],availableCapabilities:["Fetal Medicine","Laparoscopic Surgery"],icuBeds:4,generalBeds:22,phone:"040-40271234",rating:4.6},{name:"Yashoda Hospitals, Malakpet",address:"Nalgonda X Road, Malakpet",distance:"6.8 km",eta:"15 min",matchScore:84,matchedCapabilities:["Obstetrics Emergency","Blood Transfusion"],availableCapabilities:["General Surgery","Urology"],icuBeds:3,generalBeds:25,phone:"040-66776677",rating:4.3},{name:"Apollo Hospitals, Jubilee Hills",address:"Jubilee Hills, Hyderabad",distance:"7.2 km",eta:"17 min",matchScore:79,matchedCapabilities:["Obstetrics OT","Neonatology"],availableCapabilities:["Cardiac ICU","Oncology"],icuBeds:5,generalBeds:28,phone:"040-23607777",rating:4.5}]},
+seizure:{urgencyLevel:"CRITICAL",triageSummary:"A 3-year-old with high fever (104°F) experiencing convulsions and unresponsiveness indicates febrile seizure with possible meningitis or encephalitis. Immediate pediatric neurological assessment and fever management are critical.",requiredFacilities:["Pediatric ICU","Pediatric Neurology","Emergency Pediatrics","CT/MRI"],timeToHospital:"Within 10 minutes",immediateActions:["Call 108 immediately","Place child on side to prevent choking","Do NOT put anything in child's mouth — time the seizure duration"],hospitals:[{name:"Rainbow Children's Hospital, Banjara Hills",address:"Road No. 10, Banjara Hills",distance:"3.9 km",eta:"9 min",matchScore:99,matchedCapabilities:["PICU","Pediatric Neurology","24/7 Pediatric Emergency"],availableCapabilities:["NICU","Pediatric Surgery","Genetics"],icuBeds:8,generalBeds:40,phone:"040-44447777",rating:4.7},{name:"Niloufer Hospital",address:"Red Hills, Hyderabad",distance:"4.5 km",eta:"11 min",matchScore:88,matchedCapabilities:["Pediatric ICU","Neurology","Emergency OPD"],availableCapabilities:["Hematology","Radiology"],icuBeds:10,generalBeds:60,phone:"040-23320122",rating:4.1},{name:"Care Hospitals, Banjara Hills",address:"Road No. 1, Banjara Hills",distance:"5.8 km",eta:"14 min",matchScore:80,matchedCapabilities:["Pediatric Emergency","Fever Management"],availableCapabilities:["General Pediatrics","Pharmacy"],icuBeds:3,generalBeds:20,phone:"040-30418000",rating:4.2},{name:"Apollo Hospitals, Jubilee Hills",address:"Jubilee Hills, Hyderabad",distance:"6.3 km",eta:"15 min",matchScore:77,matchedCapabilities:["Pediatric Neurology","CT Scan 24/7"],availableCapabilities:["Cardiac ICU","Oncology"],icuBeds:4,generalBeds:22,phone:"040-23607777",rating:4.5}]},
+stroke:{urgencyLevel:"CRITICAL",triageSummary:"Classic FAST signs — facial drooping, arm weakness, and slurred speech — are highly indicative of an acute ischemic stroke. The golden window for thrombolysis is within 4.5 hours. Every minute counts — brain tissue is being lost rapidly.",requiredFacilities:["Stroke Unit","Interventional Neurology","CT/MRI 24/7","Thrombolysis Capability"],timeToHospital:"Within 6 minutes",immediateActions:["Call 108 immediately — note exact time symptoms started","Do NOT give food, water, or medication by mouth","Keep patient calm and lying flat, monitor breathing continuously"],hospitals:[{name:"Yashoda Hospitals, Secunderabad",address:"Alexander Road, Secunderabad",distance:"2.8 km",eta:"7 min",matchScore:96,matchedCapabilities:["24/7 Stroke Unit","Interventional Neurology","tPA Administration"],availableCapabilities:["Cardiac ICU","Trauma Center"],icuBeds:5,generalBeds:24,phone:"040-45674567",rating:4.6},{name:"NIMS — Nizam's Institute",address:"Punjagutta, Hyderabad",distance:"4.1 km",eta:"10 min",matchScore:92,matchedCapabilities:["Neurosurgery ICU","Stroke Protocol","MRI 24/7"],availableCapabilities:["Oncology","Transplant"],icuBeds:8,generalBeds:50,phone:"040-23489000",rating:4.4},{name:"Apollo Hospitals, Jubilee Hills",address:"Jubilee Hills, Hyderabad",distance:"5.9 km",eta:"14 min",matchScore:86,matchedCapabilities:["Neurology ICU","CT Angiography"],availableCapabilities:["Cardiac Surgery","Robotic OT"],icuBeds:6,generalBeds:30,phone:"040-23607777",rating:4.5},{name:"Continental Hospitals, Gachibowli",address:"IT Park Road, Gachibowli",distance:"9.2 km",eta:"20 min",matchScore:76,matchedCapabilities:["Neurology OPD","CT Scan"],availableCapabilities:["Orthopedics","Gastroenterology"],icuBeds:3,generalBeds:18,phone:"040-67000000",rating:4.3}]},
+trauma:{urgencyLevel:"CRITICAL",triageSummary:"Severe head trauma from a road accident with active bleeding and loss of consciousness points to traumatic brain injury with possible intracranial hemorrhage. Immediate neurosurgical assessment is critical. Spinal injury cannot be excluded.",requiredFacilities:["Trauma Bay","Neurosurgery ICU","CT Scan 24/7","Blood Bank"],timeToHospital:"Within 8 minutes",immediateActions:["Call 108 immediately","Do NOT move patient's neck — assume spinal injury","Apply gentle pressure to bleeding wounds only if no skull fracture visible"],hospitals:[{name:"Yashoda Hospitals, Secunderabad",address:"Alexander Road, Secunderabad",distance:"2.8 km",eta:"7 min",matchScore:95,matchedCapabilities:["Level 1 Trauma Center","Neurosurgery ICU","CT 24/7"],availableCapabilities:["Cardiac ICU","Blood Bank"],icuBeds:5,generalBeds:24,phone:"040-45674567",rating:4.6},{name:"KIMS Hospitals, Secunderabad",address:"1-8-31/1, Minister Road",distance:"3.4 km",eta:"8 min",matchScore:91,matchedCapabilities:["Trauma Bay","Neurosurgery","Emergency OT"],availableCapabilities:["Spinal Surgery","Vascular Surgery"],icuBeds:4,generalBeds:20,phone:"040-44885000",rating:4.4},{name:"NIMS — Nizam's Institute",address:"Punjagutta, Hyderabad",distance:"4.5 km",eta:"11 min",matchScore:87,matchedCapabilities:["Neurosurgery","Head Trauma Protocol"],availableCapabilities:["Oncology","Transplant"],icuBeds:8,generalBeds:50,phone:"040-23489000",rating:4.4},{name:"Osmania General Hospital",address:"Afzalgunj, Hyderabad",distance:"5.2 km",eta:"13 min",matchScore:74,matchedCapabilities:["Emergency Trauma","General Surgery"],availableCapabilities:["Orthopedics","Radiology"],icuBeds:6,generalBeds:80,phone:"040-24600149",rating:3.9}]},
+burns:{urgencyLevel:"URGENT",triageSummary:"Large burns covering the chest and arms with severe pain and blistering indicate second-degree burns affecting significant body surface area. Risk of fluid loss and infection is high. Immediate burn unit treatment and IV fluid resuscitation are required.",requiredFacilities:["Burns ICU","Plastic Surgery","Wound Care Unit","IV Fluid Resuscitation"],timeToHospital:"Within 15 minutes",immediateActions:["Cool burn with running cold water for 10–20 minutes — do NOT use ice","Cover loosely with clean non-fluffy cloth — do NOT pop blisters","Call 108 — remove jewelry/tight clothing near burn area before swelling"],hospitals:[{name:"Osmania General Hospital Burns Unit",address:"Afzalgunj, Hyderabad",distance:"4.8 km",eta:"11 min",matchScore:96,matchedCapabilities:["Dedicated Burns ICU","Skin Grafting","Plastic Surgery"],availableCapabilities:["General Surgery","Wound Care"],icuBeds:6,generalBeds:30,phone:"040-24600149",rating:4.1},{name:"Yashoda Hospitals, Malakpet",address:"Nalgonda X Road, Malakpet",distance:"5.5 km",eta:"13 min",matchScore:88,matchedCapabilities:["Burns Ward","IV Fluid Protocol","Wound Dressing"],availableCapabilities:["General ICU","Dermatology"],icuBeds:4,generalBeds:22,phone:"040-66776677",rating:4.3},{name:"Gandhi Hospital",address:"Musheerabad, Hyderabad",distance:"6.1 km",eta:"14 min",matchScore:82,matchedCapabilities:["Burns Emergency","Fluid Resuscitation"],availableCapabilities:["General Surgery","Radiology"],icuBeds:5,generalBeds:60,phone:"040-27505566",rating:3.8},{name:"Apollo Hospitals, Jubilee Hills",address:"Jubilee Hills, Hyderabad",distance:"7.8 km",eta:"18 min",matchScore:75,matchedCapabilities:["Plastic Surgery","Wound Management"],availableCapabilities:["Cardiac ICU","Oncology"],icuBeds:4,generalBeds:25,phone:"040-23607777",rating:4.5}]}
+};
+let currentKey=null,stepTimer=null;
+function fill(el,key){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');currentKey=key;document.getElementById('symp').value=TEXTS[key];}
+function show(id){['input-screen','loading','results'].forEach(s=>{const el=document.getElementById(s);el.style.display='none';el.classList.remove('show');});const t=document.getElementById(id);t.style.display=id==='loading'?'flex':'block';setTimeout(()=>t.classList.add('show'),10);}
+function runTriage(){const sym=document.getElementById('symp').value.trim();if(!sym){document.getElementById('symp').focus();return;}let key=currentKey;if(!key){const t=sym.toLowerCase();if(t.includes('chest')||t.includes('heart'))key='chest';else if(t.includes('pregnan')||t.includes('bleed'))key='pregnancy';else if(t.includes('seizure')||t.includes('convuls'))key='seizure';else if(t.includes('stroke')||t.includes('droop'))key='stroke';else if(t.includes('head')||t.includes('trauma'))key='trauma';else if(t.includes('burn'))key='burns';else key='chest';}show('loading');let idx=0;document.getElementById('load-step').textContent=STEPS[0];stepTimer=setInterval(()=>{idx=(idx+1)%STEPS.length;document.getElementById('load-step').textContent=STEPS[idx];},900);setTimeout(()=>{clearInterval(stepTimer);renderResults(DATA[key]);},3200);}
+function renderResults(d){const urg=d.urgencyLevel;const cls=urg==='CRITICAL'?'critical':urg==='URGENT'?'urgent':'moderate';const acts=(d.immediateActions||[]).map((a,i)=>`<div class="action-item"><div class="anum">${i+1}</div><span>${a}</span></div>`).join('');const hosps=(d.hospitals||[]).map((h,i)=>`<div class="hcard ${i===0?'best':''}">${i===0?'<div class="best-tag">Best Match</div>':''}<div class="hname">${h.name}</div><div class="haddr">${h.address}</div><div class="hmeta"><span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>${h.distance}</span><span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>~${h.eta}</span>${h.rating?`<span>★ ${h.rating}</span>`:''}</div><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" data-score="${h.matchScore}"></div></div><div class="mscore">${h.matchScore}% match</div></div><div class="caps">${(h.matchedCapabilities||[]).map(c=>`<span class="cap-m">✓ ${c}</span>`).join('')}${(h.availableCapabilities||[]).map(c=>`<span class="cap-a">${c}</span>`).join('')}</div><div class="beds"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b91a8" stroke-width="2" stroke-linecap="round"><path d="M2 4v16"/><path d="M2 8h18a2 2 0 012 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/></svg><span class="${h.icuBeds>0?'bok':'bno'}">ICU: ${h.icuBeds>0?h.icuBeds+' beds':'Full'}</span><span class="bsep">·</span><span class="${h.generalBeds>0?'bok':'bno'}">General: ${h.generalBeds>0?h.generalBeds+' beds':'Full'}</span></div><div class="hactions"><a class="btn-call" href="tel:${h.phone}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.07 12a19.79 19.79 0 01-3-8.63A2 2 0 013 1.18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L7.09 9a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16z"/></svg>Call Now</a><button class="btn-nav" onclick="window.open('https://www.google.com/maps/search/'+encodeURIComponent('${h.name.replace(/'/g,"\\'")} Hyderabad'),'_blank')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>Navigate</button></div></div>`).join('');document.getElementById('results').innerHTML=`<div class="demo-badge">⚡ Demo Mode — Pre-loaded Hyderabad Data</div><div class="triage-banner ${cls}"><div class="triage-top"><div class="urgency-badge"><div class="udot"></div>${urg}</div><div class="time-tag"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${d.timeToHospital}</div></div><div class="triage-summary">${d.triageSummary}</div><div class="ftags">${(d.requiredFacilities||[]).map(f=>`<span class="ftag">${f}</span>`).join('')}</div>${acts?`<div class="actions-now"><div class="actions-lbl">Do this now</div>${acts}</div>`:''}</div><div class="sec-label">4 matched hospitals</div>${hosps}<button class="reset-btn" onclick="reset()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Search another emergency</button>`;show('results');setTimeout(()=>{document.querySelectorAll('.bar-fill').forEach(b=>b.style.width=b.dataset.score+'%');},100);}
+function reset(){currentKey=null;document.getElementById('symp').value='';document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));show('input-screen');}
+show('input-screen');
+</script>
+</body>
+</html>
