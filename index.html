@@ -1,143 +1,113 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>MediRoute</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediRoute</title>
+<script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body class="bg-gray-900 text-white">
+<body class="bg-gray-900 text-white font-sans">
 
-<div class="max-w-xl mx-auto p-6">
+<div class="max-w-md mx-auto p-5">
 
-  <h1 class="text-2xl font-bold mb-2">🚑 MediRoute</h1>
-  <p class="text-gray-400 mb-4">AI Emergency Hospital Finder</p>
+<h1 class="text-2xl font-bold mb-2">🚑 MediRoute</h1>
+<p class="text-gray-400 mb-4">AI Emergency Hospital Finder</p>
 
-  <!-- INPUT -->
-  <input id="input"
-    class="w-full p-3 rounded text-black"
-    placeholder="e.g. chest pain">
+<input id="input" class="w-full p-3 rounded text-black mb-3"
+placeholder="Describe emergency...">
 
-  <button onclick="findHospital()"
-    class="mt-4 w-full bg-red-500 p-3 rounded">
-    Find Right Hospital
-  </button>
+<button onclick="findHospital()"
+class="w-full bg-red-500 p-3 rounded font-bold">
+Find Right Hospital
+</button>
 
-  <div id="result" class="mt-6 space-y-4"></div>
+<div id="result" class="mt-5 space-y-3"></div>
 
 </div>
 
 <script>
 
-// 🟢 STEP 3: LOCATION CODE
-let userLocation = null;
+// 🔴 PASTE YOUR KEY HERE
+const API_KEY = "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";
 
-function getLocation(){
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(pos => {
-      userLocation = {
-        lat: pos.coords.latitude,
-        lon: pos.coords.longitude
-      };
-      console.log("Location:", userLocation);
-    });
-  } else {
-    alert("Location not supported");
-  }
-}
+// 📍 Get location
+let userLat = null, userLon = null;
 
-getLocation();
+navigator.geolocation.getCurrentPosition(pos => {
+  userLat = pos.coords.latitude;
+  userLon = pos.coords.longitude;
+});
 
-
-// 🟢 STEP 4: AI FUNCTION
+// 🧠 AI
 async function getAI(text){
 
-  let res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
-      "Authorization": "Bearer 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",   // 🔴 REPLACE THIS
+      "Authorization": "Bearer " + API_KEY,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
       model: "mistralai/mistral-7b-instruct",
-      messages: [{
-        role: "user",
-        content: `
-Classify this emergency:
-
-${text}
-
-Return JSON:
-{
- "severity": "Critical/Urgent/Moderate",
- "facilities": ["ICU"],
- "reason": "short"
-}
-`
-      }]
+      messages: [
+        {
+          role: "user",
+          content: `Classify emergency: ${text}`
+        }
+      ]
     })
   });
 
-  let data = await res.json();
+  const data = await res.json();
   return data.choices?.[0]?.message?.content || "No AI response";
 }
 
-
-// 🟢 STEP 5: GET REAL HOSPITALS
+// 🏥 hospitals
 async function getHospitals(lat, lon){
 
-  let query = `
+  const query = `
   [out:json];
   node["amenity"="hospital"](around:5000,${lat},${lon});
   out;
   `;
 
-  let url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
-
-  let res = await fetch(url);
-  let data = await res.json();
+  const url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
+  const res = await fetch(url);
+  const data = await res.json();
 
   return data.elements.slice(0,3);
 }
 
-
-// 🟢 STEP 6: MAIN FUNCTION
+// 🚑 MAIN
 async function findHospital(){
 
   let text = document.getElementById("input").value;
 
-  if(!userLocation){
-    alert("Location not ready. Allow location access.");
+  if(!userLat){
+    alert("Allow location first");
     return;
   }
 
-  document.getElementById("result").innerHTML = "⏳ Finding hospitals...";
+  document.getElementById("result").innerHTML = "⏳ Loading...";
 
-  // AI
   let ai = await getAI(text);
-
-  // Hospitals
-  let hospitals = await getHospitals(userLocation.lat, userLocation.lon);
+  let hospitals = await getHospitals(userLat, userLon);
 
   let html = `
-    <div class="bg-gray-800 p-4 rounded">
-      <h3>🧠 AI Analysis</h3>
-      <p>${ai}</p>
-    </div>
+  <div class="bg-gray-800 p-3 rounded">
+    <b>🧠 AI:</b> ${ai}
+  </div>
   `;
 
   hospitals.forEach(h => {
     html += `
-      <div class="bg-gray-800 p-4 rounded">
-        <h3>${h.tags.name || "Hospital"}</h3>
-        <p>📍 Nearby</p>
-
-        <a target="_blank"
-          href="https://www.google.com/maps?q=${h.lat},${h.lon}"
-          class="text-blue-400">
-          Navigate
-        </a>
-      </div>
-    `;
+    <div class="bg-gray-800 p-3 rounded">
+      <b>${h.tags.name || "Hospital"}</b><br>
+      <a href="https://www.google.com/maps?q=${h.lat},${h.lon}" target="_blank">
+        Navigate
+      </a>
+    </div>`;
   });
 
   document.getElementById("result").innerHTML = html;
