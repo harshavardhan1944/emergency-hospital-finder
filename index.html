@@ -7,110 +7,165 @@
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body class="bg-gray-900 text-white font-sans">
+<body class="bg-[#07090f] text-white font-sans">
 
-<div class="max-w-md mx-auto p-5">
+<div class="max-w-md mx-auto min-h-screen flex flex-col p-5">
 
-<h1 class="text-2xl font-bold mb-2">🚑 MediRoute</h1>
-<p class="text-gray-400 mb-4">AI Emergency Hospital Finder</p>
+<!-- HEADER -->
+<div class="flex justify-between items-center mb-6">
+  <h1 class="text-xl font-semibold">🚑 MediRoute</h1>
+  <span class="text-green-400 text-xs">● LIVE</span>
+</div>
 
-<input id="input" class="w-full p-3 rounded text-black mb-3"
-placeholder="Describe emergency...">
+<!-- HERO -->
+<div class="mb-6">
+  <p class="text-red-500 text-xs mb-1">AI EMERGENCY TRIAGE</p>
+  <h2 class="text-2xl font-light leading-tight">
+    Find the <b>right hospital</b><br>in seconds
+  </h2>
+</div>
 
-<button onclick="findHospital()"
-class="w-full bg-red-500 p-3 rounded font-bold">
-Find Right Hospital
-</button>
+<!-- INPUT -->
+<div class="bg-[#161d30] p-4 rounded-xl mb-4">
 
-<div id="result" class="mt-5 space-y-3"></div>
+  <textarea id="input"
+    class="w-full bg-[#0d1120] p-3 rounded text-sm outline-none"
+    placeholder="Describe emergency..."></textarea>
+
+  <div class="flex gap-2 mt-3 flex-wrap">
+    <button onclick="fill('Chest pain')" class="chip">Chest pain</button>
+    <button onclick="fill('Pregnancy emergency')" class="chip">Pregnancy</button>
+    <button onclick="fill('Stroke symptoms')" class="chip">Stroke</button>
+  </div>
 
 </div>
 
+<!-- BUTTON -->
+<button onclick="findHospital()"
+class="bg-red-500 w-full p-3 rounded-lg font-semibold mb-4">
+Find Right Hospital
+</button>
+
+<!-- RESULT -->
+<div id="result" class="space-y-4"></div>
+
+</div>
+
+<style>
+.chip{
+  background:#0d1120;
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:12px;
+}
+</style>
+
 <script>
 
-// 🔴 PASTE YOUR KEY HERE
+// 🔴 PASTE YOUR KEY
 const API_KEY = "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";
 
-// 📍 Get location
-let userLat = null, userLon = null;
+// 📍 location
+let lat=null, lon=null;
 
-navigator.geolocation.getCurrentPosition(pos => {
-  userLat = pos.coords.latitude;
-  userLon = pos.coords.longitude;
+navigator.geolocation.getCurrentPosition(pos=>{
+  lat=pos.coords.latitude;
+  lon=pos.coords.longitude;
 });
 
 // 🧠 AI
 async function getAI(text){
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + API_KEY,
-      "Content-Type": "application/json"
+    method:"POST",
+    headers:{
+      "Authorization":"Bearer "+API_KEY,
+      "Content-Type":"application/json"
     },
     body: JSON.stringify({
-      model: "mistralai/mistral-7b-instruct",
-      messages: [
-        {
-          role: "user",
-          content: `Classify emergency: ${text}`
-        }
-      ]
+      model:"mistralai/mistral-7b-instruct",
+      messages:[{
+        role:"user",
+        content:`Classify emergency: ${text}`
+      }]
     })
   });
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || "No AI response";
+  return data.choices?.[0]?.message?.content || "AI error";
 }
 
 // 🏥 hospitals
-async function getHospitals(lat, lon){
+async function getHospitals(){
 
-  const query = `
+  const q = `
   [out:json];
   node["amenity"="hospital"](around:5000,${lat},${lon});
   out;
   `;
 
-  const url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
-  const res = await fetch(url);
-  const data = await res.json();
+  const res = await fetch(
+    "https://overpass-api.de/api/interpreter?data="+encodeURIComponent(q)
+  );
 
+  const data = await res.json();
   return data.elements.slice(0,3);
 }
 
-// 🚑 MAIN
+// 🚑 main
 async function findHospital(){
 
   let text = document.getElementById("input").value;
 
-  if(!userLat){
-    alert("Allow location first");
+  if(!lat){
+    alert("Allow location");
     return;
   }
 
-  document.getElementById("result").innerHTML = "⏳ Loading...";
+  document.getElementById("result").innerHTML =
+    "⏳ Analyzing...";
 
   let ai = await getAI(text);
-  let hospitals = await getHospitals(userLat, userLon);
+  let hospitals = await getHospitals();
 
   let html = `
-  <div class="bg-gray-800 p-3 rounded">
-    <b>🧠 AI:</b> ${ai}
+  <div class="bg-[#161d30] p-4 rounded-xl">
+    <p class="text-red-400 text-xs mb-1">AI ANALYSIS</p>
+    <p class="text-sm text-gray-300">${ai}</p>
   </div>
   `;
 
-  hospitals.forEach(h => {
+  hospitals.forEach((h,i)=>{
     html += `
-    <div class="bg-gray-800 p-3 rounded">
-      <b>${h.tags.name || "Hospital"}</b><br>
-      <a href="https://www.google.com/maps?q=${h.lat},${h.lon}" target="_blank">
-        Navigate
-      </a>
-    </div>`;
+    <div class="bg-[#161d30] p-4 rounded-xl">
+      <div class="flex justify-between">
+        <b>${h.tags.name || "Hospital"}</b>
+        <span class="text-green-400 text-xs">${90-i*5}% match</span>
+      </div>
+
+      <p class="text-xs text-gray-400 mb-2">
+        📍 Nearby • ⏱ Quick access
+      </p>
+
+      <div class="flex gap-2">
+        <a href="tel:+91"
+        class="bg-red-500 px-3 py-1 rounded text-xs">Call</a>
+
+        <a target="_blank"
+        href="https://www.google.com/maps?q=${h.lat},${h.lon}"
+        class="border px-3 py-1 rounded text-xs">
+        Navigate</a>
+      </div>
+    </div>
+    `;
   });
 
   document.getElementById("result").innerHTML = html;
+}
+
+// fill
+function fill(t){
+  document.getElementById("input").value = t;
 }
 
 </script>
