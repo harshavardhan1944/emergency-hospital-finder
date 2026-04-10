@@ -8,56 +8,48 @@
 <body class="bg-gray-100 font-sans">
 
 <!-- HEADER -->
-<div class="bg-red-600 text-white p-6">
-  <h1 class="text-2xl font-bold">🚑 Emergency Hospital Finder</h1>
-  <p class="text-sm">AI triage - Find the right hospital fast</p>
-
-  <div class="mt-4 flex gap-2">
-    <button class="bg-red-800 px-4 py-2 rounded">Critical</button>
-    <button class="bg-red-800 px-4 py-2 rounded">Urgent</button>
-    <button class="bg-red-800 px-4 py-2 rounded">Moderate</button>
-  </div>
+<div class="bg-red-600 p-5 text-white">
+  <h1 class="text-2xl font-bold">🚑 Emergency Finder</h1>
+  <p class="text-sm opacity-80">Find the right hospital in seconds</p>
 </div>
 
-<!-- INPUT -->
-<div class="p-6">
+<!-- SEARCH -->
+<div class="p-4">
 
-  <label class="block text-gray-600 mb-2">Describe the emergency</label>
-
-  <div class="flex gap-2">
+  <div class="bg-white p-3 rounded-xl shadow flex items-center gap-2">
     <input id="input"
-      class="w-full p-3 border rounded"
-      placeholder="e.g. Chest pain, pregnancy emergency...">
+      class="w-full outline-none"
+      placeholder="Describe emergency (e.g. chest pain...)">
 
-    <button onclick="startVoice()" class="bg-gray-200 px-4 rounded">🎤</button>
+    <button onclick="startVoice()">🎤</button>
   </div>
 
-  <!-- QUICK BUTTONS -->
-  <div class="mt-4 flex flex-wrap gap-2">
-    <button onclick="quickFill('Chest pain')" class="bg-white border px-3 py-2 rounded">Chest pain</button>
-    <button onclick="quickFill('Pregnancy emergency')" class="bg-white border px-3 py-2 rounded">Pregnancy</button>
-    <button onclick="quickFill('Child seizure')" class="bg-white border px-3 py-2 rounded">Child seizure</button>
-    <button onclick="quickFill('Stroke signs')" class="bg-white border px-3 py-2 rounded">Stroke</button>
+  <!-- QUICK TAGS -->
+  <div class="flex gap-2 mt-3 flex-wrap">
+    <button onclick="quickFill('Chest pain')" class="bg-white px-3 py-1 rounded-full shadow text-sm">Chest pain</button>
+    <button onclick="quickFill('Pregnancy emergency')" class="bg-white px-3 py-1 rounded-full shadow text-sm">Pregnancy</button>
+    <button onclick="quickFill('Stroke signs')" class="bg-white px-3 py-1 rounded-full shadow text-sm">Stroke</button>
   </div>
 
-  <!-- FIND BUTTON -->
+  <!-- BUTTON -->
   <button onclick="findHospital()"
-    class="mt-6 w-full bg-gray-800 text-white p-3 rounded">
-    Find Right Hospital
+    class="mt-4 w-full bg-red-600 text-white p-3 rounded-xl font-semibold">
+    Find Best Hospitals
   </button>
 
 </div>
 
 <!-- RESULTS -->
-<div id="result" class="p-6 space-y-4"></div>
+<div id="result" class="p-4 space-y-4"></div>
 
 <!-- FOOTER -->
-<div class="fixed bottom-0 w-full bg-white border-t p-3 text-center">
+<div class="fixed bottom-0 w-full bg-white border-t p-3 text-center text-sm">
   🚨 Emergency: 108 | 112
 </div>
 
 <script>
-// voice
+
+// 🎤 Voice
 function startVoice(){
   const recognition = new webkitSpeechRecognition();
   recognition.start();
@@ -68,15 +60,19 @@ function startVoice(){
   }
 }
 
-// quick fill
+// Quick fill
 function quickFill(text){
   document.getElementById("input").value = text;
 }
 
-// main
+// MAIN FUNCTION
 async function findHospital(){
 
   let text = document.getElementById("input").value;
+
+  document.getElementById("result").innerHTML = `
+    <p class="text-center text-gray-500">🔍 Finding best hospitals...</p>
+  `;
 
   let res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -109,35 +105,58 @@ Return JSON:
   let output = data.choices?.[0]?.message?.content || "No response";
 
   document.getElementById("result").innerHTML = `
-  
-  <div class="bg-white p-4 rounded shadow">
-    <h3 class="font-bold text-lg">🧠 AI Analysis</h3>
-    <p class="text-sm text-gray-600">${output}</p>
-  </div>
+    
+    <!-- AI RESULT -->
+    <div class="bg-white p-4 rounded-xl shadow">
+      <h3 class="font-bold text-lg">🧠 AI Triage</h3>
+      <p class="text-sm text-gray-600">${output}</p>
+    </div>
 
-  ${hospitalCard("Apollo Hospital", "2 km", "5 min")}
-  ${hospitalCard("Yashoda Hospital", "3 km", "8 min")}
-  ${hospitalCard("KIMS Hospital", "4 km", "10 min")}
+    ${hospitalCard("Apollo Hospital", "92%", "2 km", "5 min", "red")}
+    ${hospitalCard("Yashoda Hospital", "87%", "3 km", "8 min", "yellow")}
+    ${hospitalCard("KIMS Hospital", "81%", "4 km", "10 min", "green")}
   `;
 }
 
-// hospital card
-function hospitalCard(name, distance, time){
-  return `
-  <div class="bg-white p-4 rounded shadow">
-    <h3 class="font-bold">${name}</h3>
-    <p class="text-sm text-gray-600">📍 ${distance} | ⏱️ ${time}</p>
+// CARD UI
+function hospitalCard(name, match, distance, time, color){
 
-    <div class="mt-2 flex gap-2">
+  let badgeColor = {
+    red: "bg-red-500",
+    yellow: "bg-yellow-400",
+    green: "bg-green-500"
+  }
+
+  return `
+  <div class="bg-white rounded-xl shadow p-4">
+
+    <div class="flex justify-between items-center">
+      <h3 class="font-bold text-lg">${name}</h3>
+      <span class="${badgeColor[color]} text-white text-xs px-2 py-1 rounded">
+        ${match} Match
+      </span>
+    </div>
+
+    <p class="text-sm text-gray-500 mt-1">
+      📍 ${distance} • ⏱️ ${time}
+    </p>
+
+    <div class="flex gap-2 mt-3">
       <a href="tel:+918040000000"
-        class="bg-green-500 text-white px-3 py-1 rounded">Call</a>
+        class="flex-1 bg-green-500 text-white text-center py-2 rounded-lg">
+        📞 Call
+      </a>
 
       <a href="https://www.google.com/maps"
-        class="bg-blue-500 text-white px-3 py-1 rounded">Navigate</a>
+        class="flex-1 bg-blue-500 text-white text-center py-2 rounded-lg">
+        🗺️ Navigate
+      </a>
     </div>
+
   </div>
   `;
 }
+
 </script>
 
 </body>
