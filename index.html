@@ -1,1 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Emergency Hospital Finder</title>
+</head>
+<body style="font-family: Arial; padding:20px">
 
+<h2>🚑 Emergency Hospital Finder</h2>
+
+<input id="input" placeholder="Describe emergency..." style="width:300px;height:40px">
+
+<button onclick="startVoice()">🎤</button>
+<button onclick="findHospital()">Find Hospital</button>
+
+<div id="result"></div>
+
+<script>
+// 🎤 Voice input
+function startVoice(){
+  const recognition = new webkitSpeechRecognition();
+  recognition.start();
+
+  recognition.onresult = function(event){
+    document.getElementById("input").value =
+      event.results[0][0].transcript;
+  }
+}
+
+// 🚑 MAIN FUNCTION
+async function findHospital(){
+  let text = document.getElementById("input").value;
+
+  let response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "openai/gpt-3.5-turbo",
+      messages: [{
+        role: "user",
+        content: `Classify this emergency: ${text}. 
+        Return JSON with severity and needed facilities`
+      }]
+    })
+  });
+
+  let data = await response.json();
+
+  document.getElementById("result").innerHTML = `
+    <h3>Result:</h3>
+    <p>${JSON.stringify(data)}</p>
+
+    <h3>Top Hospitals:</h3>
+
+    <p>🏥 Apollo Hospital<br>
+    📍 2 km | ⏱️ 5 min<br>
+    <a href="tel:+918040000000">Call</a> |
+    <a href="https://maps.google.com">Navigate</a></p>
+
+    <p>🏥 Yashoda Hospital<br>
+    📍 3 km | ⏱️ 8 min<br>
+    <a href="tel:+918040000000">Call</a> |
+    <a href="https://maps.google.com">Navigate</a></p>
+
+    <p>🏥 KIMS Hospital<br>
+    📍 4 km | ⏱️ 10 min<br>
+    <a href="tel:+918040000000">Call</a> |
+    <a href="https://maps.google.com">Navigate</a></p>
+
+    <hr>
+    🚨 Emergency: 108 | 112
+  `;
+}
+</script>
+
+</body>
+</html>
