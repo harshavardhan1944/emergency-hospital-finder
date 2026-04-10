@@ -2,20 +2,62 @@
 <html>
 <head>
   <title>Emergency Hospital Finder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body style="font-family: Arial; padding:20px">
 
-<h2>🚑 Emergency Hospital Finder</h2>
+<body class="bg-gray-100 font-sans">
 
-<input id="input" placeholder="Describe emergency..." style="width:300px;height:40px">
+<!-- HEADER -->
+<div class="bg-red-600 text-white p-6">
+  <h1 class="text-2xl font-bold">🚑 Emergency Hospital Finder</h1>
+  <p class="text-sm">AI triage - Find the right hospital fast</p>
 
-<button onclick="startVoice()">🎤</button>
-<button onclick="findHospital()">Find Hospital</button>
+  <div class="mt-4 flex gap-2">
+    <button class="bg-red-800 px-4 py-2 rounded">Critical</button>
+    <button class="bg-red-800 px-4 py-2 rounded">Urgent</button>
+    <button class="bg-red-800 px-4 py-2 rounded">Moderate</button>
+  </div>
+</div>
 
-<div id="result"></div>
+<!-- INPUT -->
+<div class="p-6">
+
+  <label class="block text-gray-600 mb-2">Describe the emergency</label>
+
+  <div class="flex gap-2">
+    <input id="input"
+      class="w-full p-3 border rounded"
+      placeholder="e.g. Chest pain, pregnancy emergency...">
+
+    <button onclick="startVoice()" class="bg-gray-200 px-4 rounded">🎤</button>
+  </div>
+
+  <!-- QUICK BUTTONS -->
+  <div class="mt-4 flex flex-wrap gap-2">
+    <button onclick="quickFill('Chest pain')" class="bg-white border px-3 py-2 rounded">Chest pain</button>
+    <button onclick="quickFill('Pregnancy emergency')" class="bg-white border px-3 py-2 rounded">Pregnancy</button>
+    <button onclick="quickFill('Child seizure')" class="bg-white border px-3 py-2 rounded">Child seizure</button>
+    <button onclick="quickFill('Stroke signs')" class="bg-white border px-3 py-2 rounded">Stroke</button>
+  </div>
+
+  <!-- FIND BUTTON -->
+  <button onclick="findHospital()"
+    class="mt-6 w-full bg-gray-800 text-white p-3 rounded">
+    Find Right Hospital
+  </button>
+
+</div>
+
+<!-- RESULTS -->
+<div id="result" class="p-6 space-y-4"></div>
+
+<!-- FOOTER -->
+<div class="fixed bottom-0 w-full bg-white border-t p-3 text-center">
+  🚨 Emergency: 108 | 112
+</div>
 
 <script>
-// 🎤 Voice input
+// voice
 function startVoice(){
   const recognition = new webkitSpeechRecognition();
   recognition.start();
@@ -26,11 +68,17 @@ function startVoice(){
   }
 }
 
-// 🚑 MAIN FUNCTION
+// quick fill
+function quickFill(text){
+  document.getElementById("input").value = text;
+}
+
+// main
 async function findHospital(){
+
   let text = document.getElementById("input").value;
 
-  let response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  let res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Authorization": "Bearer YOUR_API_KEY",
@@ -40,37 +88,54 @@ async function findHospital(){
       model: "openai/gpt-3.5-turbo",
       messages: [{
         role: "user",
-        content: `Classify this emergency: ${text}. 
-        Return JSON with severity and needed facilities`
+        content: `
+You are a medical triage assistant.
+
+Input: ${text}
+
+Return JSON:
+{
+ "severity": "Critical/Urgent/Moderate",
+ "facilities": ["ICU", "Cardiology"],
+ "reason": "short"
+}
+`
       }]
     })
   });
 
-  let data = await response.json();
+  let data = await res.json();
+
+  let output = data.choices?.[0]?.message?.content || "No response";
 
   document.getElementById("result").innerHTML = `
-    <h3>Result:</h3>
-    <p>${JSON.stringify(data)}</p>
+  
+  <div class="bg-white p-4 rounded shadow">
+    <h3 class="font-bold text-lg">🧠 AI Analysis</h3>
+    <p class="text-sm text-gray-600">${output}</p>
+  </div>
 
-    <h3>Top Hospitals:</h3>
+  ${hospitalCard("Apollo Hospital", "2 km", "5 min")}
+  ${hospitalCard("Yashoda Hospital", "3 km", "8 min")}
+  ${hospitalCard("KIMS Hospital", "4 km", "10 min")}
+  `;
+}
 
-    <p>🏥 Apollo Hospital<br>
-    📍 2 km | ⏱️ 5 min<br>
-    <a href="tel:+918040000000">Call</a> |
-    <a href="https://maps.google.com">Navigate</a></p>
+// hospital card
+function hospitalCard(name, distance, time){
+  return `
+  <div class="bg-white p-4 rounded shadow">
+    <h3 class="font-bold">${name}</h3>
+    <p class="text-sm text-gray-600">📍 ${distance} | ⏱️ ${time}</p>
 
-    <p>🏥 Yashoda Hospital<br>
-    📍 3 km | ⏱️ 8 min<br>
-    <a href="tel:+918040000000">Call</a> |
-    <a href="https://maps.google.com">Navigate</a></p>
+    <div class="mt-2 flex gap-2">
+      <a href="tel:+918040000000"
+        class="bg-green-500 text-white px-3 py-1 rounded">Call</a>
 
-    <p>🏥 KIMS Hospital<br>
-    📍 4 km | ⏱️ 10 min<br>
-    <a href="tel:+918040000000">Call</a> |
-    <a href="https://maps.google.com">Navigate</a></p>
-
-    <hr>
-    🚨 Emergency: 108 | 112
+      <a href="https://www.google.com/maps"
+        class="bg-blue-500 text-white px-3 py-1 rounded">Navigate</a>
+    </div>
+  </div>
   `;
 }
 </script>
